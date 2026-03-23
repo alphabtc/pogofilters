@@ -107,6 +107,15 @@
   .ttitle { font-family: 'Syne', sans-serif; font-weight: 600; font-size: 0.78rem; color: var(--text); margin-bottom: 4px; }
   .tbody { font-size: 0.69rem; color: var(--muted); line-height: 1.5; }
   footer { text-align: center; padding: 36px 0 20px; font-size: 0.64rem; color: var(--muted); letter-spacing: 0.06em; }
+
+  /* QR */
+  .qr-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 0.72rem; padding: 8px 10px; cursor: pointer; transition: all 0.15s; flex-shrink: 0; line-height: 1; }
+  .qr-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .qr-overlay { position: fixed; inset: 0; z-index: 999; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; }
+  .qr-overlay canvas { border-radius: 12px; }
+  .qr-overlay .qr-label { font-size: 0.72rem; color: var(--muted); max-width: 280px; text-align: center; word-break: break-all; line-height: 1.5; }
+  .qr-overlay .qr-close { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 0.75rem; padding: 10px 28px; cursor: pointer; transition: all 0.15s; }
+  .qr-overlay .qr-close:hover { border-color: var(--accent); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -424,7 +433,8 @@ function renderFilters(d, iv) {
       row.innerHTML = `
         <span class="flabel">${f.label}</span>
         <span class="fstring">${str}</span>
-        <button class="cbtn" data-str="${encodeURIComponent(str)}" onclick="copyF(this)">copy</button>`;
+        <button class="cbtn" data-str="${encodeURIComponent(str)}" onclick="copyF(this)">copy</button>
+        <button class="qr-btn" data-str="${encodeURIComponent(str)}" onclick="showQR(this)" title="Show QR code">⣿</button>`;
       grp.appendChild(row);
     });
     el.appendChild(grp);
@@ -473,6 +483,193 @@ function updateProg(total) {
   const done = document.querySelectorAll('.citem.checked').length;
   document.getElementById('progCt').textContent = `${done} / ${total} complete`;
   document.getElementById('progFill').style.width = `${(done / total) * 100}%`;
+}
+
+// ── QR CODE GENERATOR (client-side, no dependencies) ──
+// Minimal QR encoder supporting alphanumeric mode, versions 1-10
+var QR=(function(){
+  var EC_L=1;
+  // GF(256) tables
+  var EXP=new Uint8Array(256),LOG=new Uint8Array(256);
+  (function(){var v=1;for(var i=0;i<255;i++){EXP[i]=v;LOG[v]=i;v<<=1;if(v>=256)v^=285;}EXP[255]=EXP[0];})();
+  function gfMul(a,b){return a===0||b===0?0:EXP[(LOG[a]+LOG[b])%255];}
+  function polyMul(a,b){var r=new Uint8Array(a.length+b.length-1);for(var i=0;i<a.length;i++)for(var j=0;j<b.length;j++)r[i+j]^=gfMul(a[i],b[j]);return r;}
+  function genPoly(n){var p=new Uint8Array([1]);for(var i=0;i<n;i++)p=polyMul(p,new Uint8Array([1,EXP[i]]));return p;}
+  function ecBytes(data,ecLen){var gen=genPoly(ecLen),msg=new Uint8Array(data.length+ecLen);msg.set(data);for(var i=0;i<data.length;i++){var coef=msg[i];if(coef!==0)for(var j=0;j<gen.length;j++)msg[i+j]^=gfMul(gen[j],coef);}return msg.slice(data.length);}
+
+  // Version info: [totalBytes, ecBytesPerBlock, numBlocks, dataBytes]
+  var VERSIONS=[
+    null,
+    [26,7,1,19],[44,10,1,34],[70,15,1,55],[100,20,1,80],[134,26,1,108],
+    [172,18,2,68],[196,20,2,78],[242,24,2,97],[292,30,2,116],[346,18,2,68]
+  ];
+  var ALIGN_POS=[null,[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50]];
+
+  function chooseVersion(dataLen){
+    // byte mode: 4 mode + 8/16 length + data*8 + 4 terminator
+    for(var v=1;v<=10;v++){
+      var info=VERSIONS[v];
+      var cap=info[3];
+      if(dataLen+3<=cap)return v; // +3 for mode/length/terminator overhead
+    }
+    return 10;
+  }
+
+  function encode(text){
+    var bytes=[];
+    for(var i=0;i<text.length;i++){
+      var c=text.charCodeAt(i);
+      if(c<128)bytes.push(c);
+      else if(c<2048){bytes.push(192|(c>>6),128|(c&63));}
+      else{bytes.push(224|(c>>12),128|((c>>6)&63),128|(c&63));}
+    }
+
+    var ver=chooseVersion(bytes.length);
+    var info=VERSIONS[ver];
+    var dataCap=info[3],ecLen=info[1],numBlocks=info[2];
+
+    // Build data codewords: byte mode indicator + length + data + padding
+    var bits=[];
+    function pushBits(val,len){for(var i=len-1;i>=0;i--)bits.push((val>>i)&1);}
+    pushBits(4,4); // byte mode
+    pushBits(bytes.length,ver<=9?8:16);
+    bytes.forEach(function(b){pushBits(b,8);});
+    pushBits(0,4); // terminator
+    while(bits.length%8)bits.push(0);
+    var codewords=[];
+    for(var i=0;i<bits.length;i+=8)codewords.push((bits[i]<<7)|(bits[i+1]<<6)|(bits[i+2]<<5)|(bits[i+3]<<4)|(bits[i+4]<<3)|(bits[i+5]<<2)|(bits[i+6]<<1)|bits[i+7]);
+    var pad=[236,17],pi=0;
+    while(codewords.length<dataCap)codewords.push(pad[pi++%2]);
+
+    // Split into blocks and generate EC
+    var blockSize=Math.floor(dataCap/numBlocks);
+    var dataBlocks=[],ecBlocks=[];
+    for(var b=0;b<numBlocks;b++){
+      var start=b*blockSize;
+      var block=new Uint8Array(codewords.slice(start,start+blockSize));
+      dataBlocks.push(block);
+      ecBlocks.push(ecBytes(block,ecLen));
+    }
+
+    // Interleave
+    var final=[];
+    for(var i=0;i<blockSize;i++)for(var b=0;b<numBlocks;b++)final.push(dataBlocks[b][i]);
+    for(var i=0;i<ecLen;i++)for(var b=0;b<numBlocks;b++)final.push(ecBlocks[b][i]);
+
+    // Build matrix
+    var size=17+ver*4;
+    var grid=[];for(var i=0;i<size;i++){grid[i]=[];for(var j=0;j<size;j++)grid[i][j]=-1;}
+    var reserved=[];for(var i=0;i<size;i++){reserved[i]=[];for(var j=0;j<size;j++)reserved[i][j]=false;}
+
+    function setMod(r,c,val){if(r>=0&&r<size&&c>=0&&c<size){grid[r][c]=val?1:0;reserved[r][c]=true;}}
+
+    // Finder patterns
+    function finder(r,c){
+      for(var dr=-1;dr<=7;dr++)for(var dc=-1;dc<=7;dc++){
+        var val=(dr>=0&&dr<=6&&dc>=0&&dc<=6)&&(dr===0||dr===6||dc===0||dc===6||(dr>=2&&dr<=4&&dc>=2&&dc<=4));
+        setMod(r+dr,c+dc,val);
+      }
+    }
+    finder(0,0);finder(0,size-7);finder(size-7,0);
+
+    // Timing patterns
+    for(var i=8;i<size-8;i++){setMod(6,i,i%2===0);setMod(i,6,i%2===0);}
+
+    // Dark module
+    setMod(size-8,8,1);
+
+    // Alignment patterns
+    var ap=ALIGN_POS[ver];
+    if(ap.length){
+      for(var ai=0;ai<ap.length;ai++)for(var aj=0;aj<ap.length;aj++){
+        var ar=ap[ai],ac=ap[aj];
+        if((ar<=8&&ac<=8)||(ar<=8&&ac>=size-8)||(ar>=size-8&&ac<=8))continue;
+        for(var dr=-2;dr<=2;dr++)for(var dc=-2;dc<=2;dc++)
+          setMod(ar+dr,ac+dc,Math.abs(dr)===2||Math.abs(dc)===2||(dr===0&&dc===0));
+      }
+    }
+
+    // Reserve format info areas
+    for(var i=0;i<8;i++){
+      if(!reserved[8])reserved[8]=[];
+      reserved[8][i]=true;reserved[8][size-1-i]=true;
+      reserved[i][8]=true;reserved[size-1-i][8]=true;
+    }
+    reserved[8][8]=true;
+
+    // Place data bits
+    var bitStream=[];
+    final.forEach(function(b){for(var i=7;i>=0;i--)bitStream.push((b>>i)&1);});
+    var bitIdx=0;
+    for(var col=size-1;col>=1;col-=2){
+      if(col===6)col=5;
+      for(var row=0;row<size;row++){
+        for(var dc=0;dc<=1;dc++){
+          var c=col-dc;
+          var r=((Math.floor((size-1-col+(col<=6?1:0))/2))%2===0)?(size-1-row):row;
+          if(!reserved[r][c]&&bitIdx<bitStream.length){
+            grid[r][c]=bitStream[bitIdx++];
+          }else if(!reserved[r][c]){
+            grid[r][c]=0;
+          }
+        }
+      }
+    }
+
+    // Apply mask 0 (checkerboard) and set format bits
+    for(var r=0;r<size;r++)for(var c=0;c<size;c++){
+      if(!reserved[r][c])grid[r][c]^=((r+c)%2===0)?1:0;
+    }
+
+    // Format info for mask 0, EC level L: pre-computed
+    var fmtBits=0x77C4;
+    var fmtPositions=[[0,8],[1,8],[2,8],[3,8],[4,8],[5,8],[7,8],[8,8],[8,7],[8,5],[8,4],[8,3],[8,2],[8,1],[8,0]];
+    var fmtPositions2=[[8,size-1],[8,size-2],[8,size-3],[8,size-4],[8,size-5],[8,size-6],[8,size-7],[8,size-8],[size-7,8],[size-6,8],[size-5,8],[size-4,8],[size-3,8],[size-2,8],[size-1,8]];
+    for(var i=0;i<15;i++){
+      var bit=(fmtBits>>i)&1;
+      grid[fmtPositions[i][0]][fmtPositions[i][1]]=bit;
+      grid[fmtPositions2[i][0]][fmtPositions2[i][1]]=bit;
+    }
+
+    return {grid:grid,size:size};
+  }
+
+  function toCanvas(text,scale){
+    if(!scale)scale=6;
+    var qr=encode(text);
+    var margin=4;
+    var total=(qr.size+margin*2)*scale;
+    var cvs=document.createElement('canvas');
+    cvs.width=total;cvs.height=total;
+    var ctx=cvs.getContext('2d');
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,total,total);
+    ctx.fillStyle='#000000';
+    for(var r=0;r<qr.size;r++)for(var c=0;c<qr.size;c++){
+      if(qr.grid[r][c]===1)ctx.fillRect((c+margin)*scale,(r+margin)*scale,scale,scale);
+    }
+    return cvs;
+  }
+
+  return{toCanvas:toCanvas};
+})();
+
+function showQR(btn){
+  var str=decodeURIComponent(btn.dataset.str);
+  var overlay=document.createElement('div');
+  overlay.className='qr-overlay';
+  overlay.onclick=function(e){if(e.target===overlay)overlay.remove();};
+  var canvas=QR.toCanvas(str,8);
+  overlay.appendChild(canvas);
+  var label=document.createElement('div');
+  label.className='qr-label';
+  label.textContent=str;
+  overlay.appendChild(label);
+  var close=document.createElement('button');
+  close.className='qr-close';
+  close.textContent='Close';
+  close.onclick=function(){overlay.remove();};
+  overlay.appendChild(close);
+  document.body.appendChild(overlay);
 }
 
 function renderTips(d) {
