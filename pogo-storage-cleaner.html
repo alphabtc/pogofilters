@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PokéVault — Storage Cleaner</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14; --surface: #14171f; --surface2: #1c2030; --border: #252a38;
+    --accent: #f5c842; --text: #e8eaf0; --muted: #6b7280;
+    --keep: #5bc8af; --transfer: #e8624a; --maybe: #f5c842;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Mono', monospace; background: var(--bg); color: var(--text); min-height: 100vh; }
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.35;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  }
+  .screen { display: none; position: relative; z-index: 1; }
+  .screen.active { display: block; }
+
+  /* ── ONBOARD ── */
+  #screen-onboard { min-height: 100vh; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; text-align: center; }
+  #screen-onboard.active { display: flex !important; }
+  .brand { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 2.2rem; letter-spacing: -0.02em; color: var(--accent); margin-bottom: 6px; }
+  .brand span { color: var(--text); }
+  .brand-sub { font-size: 0.72rem; color: var(--muted); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 48px; }
+  .onboard-q { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.2rem; color: var(--text); margin-bottom: 8px; }
+  .onboard-hint { font-size: 0.72rem; color: var(--muted); margin-bottom: 30px; line-height: 1.6; }
+  .style-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 560px; width: 100%; }
+  @media (max-width: 480px) { .style-cards { grid-template-columns: 1fr; } }
+  .style-card { background: var(--surface); border: 2px solid var(--border); border-radius: 14px; padding: 20px 18px; cursor: pointer; transition: all 0.18s; text-align: left; }
+  .style-card:hover { border-color: rgba(245,200,66,0.4); transform: translateY(-2px); }
+  .style-card.selected { border-color: var(--accent); background: rgba(245,200,66,0.04); }
+  .s-icon { font-size: 1.7rem; margin-bottom: 10px; }
+  .s-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.95rem; color: var(--text); margin-bottom: 5px; }
+  .s-desc { font-size: 0.69rem; color: var(--muted); line-height: 1.5; }
+  .s-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+  .s-tag { font-size: 0.6rem; padding: 2px 7px; border-radius: 4px; background: var(--surface2); color: var(--muted); }
+  .start-btn { margin-top: 32px; background: var(--accent); color: #0d0f14; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.9rem; border: none; border-radius: 8px; padding: 14px 40px; cursor: pointer; transition: all 0.15s; opacity: 0.25; pointer-events: none; }
+  .start-btn.ready { opacity: 1; pointer-events: all; }
+  .start-btn.ready:hover { background: #ffd84d; transform: translateY(-1px); }
+
+  /* ── TOOL ── */
+  .container { max-width: 800px; margin: 0 auto; padding: 40px 24px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 38px; }
+  .h-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.55rem; letter-spacing: -0.02em; color: var(--accent); }
+  .h-logo span { color: var(--text); }
+  .h-sub { font-size: 0.67rem; color: var(--muted); margin-top: 2px; }
+  .mode-pill { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; transition: border-color 0.15s; }
+  .mode-pill:hover { border-color: rgba(245,200,66,0.4); }
+  .mode-pill-icon { font-size: 1rem; }
+  .mode-pill-name { font-family: 'Syne', sans-serif; font-weight: 600; font-size: 0.77rem; }
+  .mode-pill-change { font-size: 0.6rem; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .sec-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .sec-num { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 0.67rem; letter-spacing: 0.1em; color: var(--accent); background: rgba(245,200,66,0.1); border: 1px solid rgba(245,200,66,0.25); border-radius: 4px; padding: 2px 8px; text-transform: uppercase; }
+  .sec-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.98rem; color: var(--text); }
+  .sec-desc { font-size: 0.73rem; color: var(--muted); margin-bottom: 16px; line-height: 1.65; }
+  .fgroup { margin-bottom: 18px; }
+  .fgroup-label { font-size: 0.63rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .frow { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .flabel { font-size: 0.66rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; min-width: 108px; }
+  .fstring { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-family: 'DM Mono', monospace; font-size: 0.77rem; color: var(--accent); word-break: break-all; line-height: 1.4; }
+  .cbtn { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.67rem; padding: 8px 12px; cursor: pointer; transition: all 0.15s; white-space: nowrap; flex-shrink: 0; }
+  .cbtn:hover { border-color: var(--accent); color: var(--accent); }
+  .cbtn.copied { border-color: var(--keep); color: var(--keep); }
+  .iv-row { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+  .iv-lbl { font-size: 0.71rem; color: var(--muted); }
+  .iv-slider { -webkit-appearance: none; appearance: none; height: 4px; background: var(--surface2); border-radius: 2px; outline: none; width: 140px; accent-color: var(--accent); }
+  .iv-val { font-family: 'Syne', sans-serif; font-weight: 700; color: var(--accent); font-size: 0.88rem; min-width: 40px; }
+  .reset-btn { background: rgba(245,200,66,0.08); border: 1px solid rgba(245,200,66,0.2); border-radius: 6px; color: var(--accent); font-family: 'DM Mono', monospace; font-size: 0.67rem; padding: 5px 12px; cursor: pointer; transition: all 0.15s; margin-left: auto; }
+  .reset-btn:hover { background: rgba(245,200,66,0.15); }
+  .dgrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 600px) { .dgrid { grid-template-columns: 1fr; } }
+  .dcard { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 15px; }
+  .dcard.keep { border-top: 3px solid var(--keep); }
+  .dcard.transfer { border-top: 3px solid var(--transfer); }
+  .dcard.maybe { border-top: 3px solid var(--maybe); }
+  .dlabel { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.76rem; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
+  .keep .dlabel { color: var(--keep); } .transfer .dlabel { color: var(--transfer); } .maybe .dlabel { color: var(--maybe); }
+  .drules { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .drules li { font-size: 0.69rem; color: var(--muted); line-height: 1.4; display: flex; gap: 6px; }
+  .drules li::before { content: '→'; flex-shrink: 0; opacity: 0.4; }
+  .prog-wrap { margin-bottom: 16px; }
+  .prog-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
+  .prog-lbl { font-size: 0.67rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .prog-ct { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.83rem; color: var(--accent); }
+  .prog-bg { background: var(--surface2); border-radius: 99px; height: 5px; overflow: hidden; }
+  .prog-fill { height: 100%; background: linear-gradient(90deg, var(--keep), var(--accent)); border-radius: 99px; transition: width 0.3s ease; width: 0%; }
+  .clist { display: flex; flex-direction: column; gap: 8px; }
+  .citem { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color 0.15s; user-select: none; }
+  .citem:hover { border-color: rgba(245,200,66,0.3); }
+  .citem.checked { border-color: rgba(91,200,175,0.4); background: rgba(91,200,175,0.04); }
+  .cbox { width: 18px; height: 18px; border: 2px solid var(--border); border-radius: 4px; flex-shrink: 0; margin-top: 1px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+  .citem.checked .cbox { background: var(--keep); border-color: var(--keep); }
+  .cmark { display: none; color: #0d0f14; font-size: 11px; font-weight: 700; }
+  .citem.checked .cmark { display: block; }
+  .ctxt { flex: 1; }
+  .ctitle { font-size: 0.79rem; color: var(--text); margin-bottom: 2px; font-weight: 500; }
+  .csub { font-size: 0.69rem; color: var(--muted); line-height: 1.4; }
+  .tgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 600px) { .tgrid { grid-template-columns: 1fr; } }
+  .tcard { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .ticon { font-size: 1.1rem; margin-bottom: 6px; }
+  .ttitle { font-family: 'Syne', sans-serif; font-weight: 600; font-size: 0.78rem; color: var(--text); margin-bottom: 4px; }
+  .tbody { font-size: 0.69rem; color: var(--muted); line-height: 1.5; }
+  footer { text-align: center; padding: 36px 0 20px; font-size: 0.64rem; color: var(--muted); letter-spacing: 0.06em; }
+</style>
+</head>
+<body>
+
+<!-- SCREEN 1: ONBOARD -->
+<div id="screen-onboard" class="screen active">
+  <div class="brand">PokéVault <span>Cleaner</span></div>
+  <div class="brand-sub">Pokémon GO · Storage Reduction Toolkit</div>
+  <div class="onboard-q">How do you mainly play?</div>
+  <div class="onboard-hint">Your play style changes which Pokémon are worth keeping.<br>Pick one and we'll tailor every filter, rule, and checklist to match.</div>
+  <div class="style-cards">
+    <div class="style-card" data-style="casual" onclick="selectStyle(this)">
+      <div class="s-icon">🌿</div>
+      <div class="s-name">Casual</div>
+      <div class="s-desc">You catch, hatch, and enjoy the game — no competitive goals, just want storage clean and fast.</div>
+      <div class="s-tags"><span class="s-tag">fast cleanup</span><span class="s-tag">low-IV purge</span><span class="s-tag">simple rules</span></div>
+    </div>
+    <div class="style-card" data-style="pvp" onclick="selectStyle(this)">
+      <div class="s-icon">⚔️</div>
+      <div class="s-name">PvP Battler</div>
+      <div class="s-desc">Great League, Ultra League, or Masters — you care about rank and stat product, not just IV %.</div>
+      <div class="s-tags"><span class="s-tag">rank 1 IVs</span><span class="s-tag">CP caps</span><span class="s-tag">GL / UL meta</span></div>
+    </div>
+    <div class="style-card" data-style="raiding" onclick="selectStyle(this)">
+      <div class="s-icon">🏆</div>
+      <div class="s-name">Raider / PvE</div>
+      <div class="s-desc">Raids and gym battles. You want high-IV attackers with the right moveset, fully powered.</div>
+      <div class="s-tags"><span class="s-tag">high IV %</span><span class="s-tag">best moveset</span><span class="s-tag">raid meta</span></div>
+    </div>
+    <div class="style-card" data-style="all" onclick="selectStyle(this)">
+      <div class="s-icon">🎯</div>
+      <div class="s-name">All-Around</div>
+      <div class="s-desc">Raids, PvP leagues, community days — a bit of everything. Full coverage approach.</div>
+      <div class="s-tags"><span class="s-tag">PvP + PvE</span><span class="s-tag">comprehensive</span><span class="s-tag">all formats</span></div>
+    </div>
+  </div>
+  <button class="start-btn" id="startBtn" onclick="launchTool()">Build My Filters →</button>
+</div>
+
+<!-- SCREEN 2: TOOL -->
+<div id="screen-tool" class="screen">
+  <div class="container">
+    <header>
+      <div>
+        <div class="h-logo">PokéVault <span>Cleaner</span></div>
+        <div class="h-sub">Storage Reduction Toolkit</div>
+      </div>
+      <div class="mode-pill" onclick="goBack()">
+        <span class="mode-pill-icon" id="pillIcon"></span>
+        <div>
+          <div class="mode-pill-name" id="pillName"></div>
+          <div class="mode-pill-change">↩ change</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 01 FILTERS -->
+    <div class="section">
+      <div class="sec-head"><span class="sec-num">01</span><span class="sec-title">In-Game Search Filters</span></div>
+      <p class="sec-desc" id="filterDesc"></p>
+      <div class="iv-row" id="ivRow">
+        <span class="iv-lbl">IV floor:</span>
+        <input type="range" class="iv-slider" id="ivSlider" min="0" max="100" value="82" oninput="updateFilters()">
+        <span class="iv-val" id="ivVal">82%</span>
+        <button class="reset-btn" onclick="resetIV()">↺ reset</button>
+      </div>
+      <div id="filterList"></div>
+    </div>
+
+    <!-- 02 DECISIONS -->
+    <div class="section">
+      <div class="sec-head"><span class="sec-num">02</span><span class="sec-title">Keep / Transfer / Maybe</span></div>
+      <p class="sec-desc" id="decDesc"></p>
+      <div class="dgrid" id="decGrid"></div>
+    </div>
+
+    <!-- 03 CHECKLIST -->
+    <div class="section">
+      <div class="sec-head"><span class="sec-num">03</span><span class="sec-title">Cleanup Checklist</span></div>
+      <p class="sec-desc">Work top to bottom. Check off as you go — fastest path to clear storage.</p>
+      <div class="prog-wrap">
+        <div class="prog-top">
+          <span class="prog-lbl">Progress</span>
+          <span class="prog-ct" id="progCt">0 / 0 complete</span>
+        </div>
+        <div class="prog-bg"><div class="prog-fill" id="progFill"></div></div>
+      </div>
+      <div class="clist" id="checklist"></div>
+    </div>
+
+    <!-- 04 TIPS -->
+    <div class="section">
+      <div class="sec-head"><span class="sec-num">04</span><span class="sec-title">Speed Tips</span></div>
+      <div class="tgrid" id="tipGrid"></div>
+    </div>
+
+    <footer>PokéVault · Not affiliated with Niantic or The Pokémon Company</footer>
+  </div>
+</div>
+
+<script>
+const DATA = {
+  casual: {
+    icon: '🌿', name: 'Casual', defaultIV: 82,
+    filterDesc: 'Paste these directly into the Pokémon GO search bar to surface candidates for transfer. Adjust the IV floor slider to match your own standards.',
+    filters: [
+      { group: 'Core Cleanup', items: [
+        { label: 'Low IV junk',    fn: iv => `!favorite&0-${iv-1}&!shiny&!lucky` },
+        { label: 'Common spawns', fn: _  => `rattata,pidgey,weedle,caterpie,sentret,hoothoot,wurmple,zigzagoon,bidoof,patrat,purrloin,lillipup&!shiny&!lucky&!favorite` },
+        { label: 'Under 100 CP',  fn: _  => `cp-100&!shiny&!lucky&!baby&!favorite` },
+      ]},
+      { group: 'Duplicates & Excess', items: [
+        { label: 'Old shadows',     fn: iv => `shadow&0-${iv-1}&!favorite` },
+        { label: 'Species extras',  fn: _  => `[species name]&!shiny&!lucky&!favorite` },
+      ]},
+    ],
+    decDesc: 'Quick rules for a casual cleanout. When in doubt — transfer.',
+    keep:     ['Shiny (1 per species)', 'Lucky Pokémon', 'Best buddy or XL-invested', 'High CP gym defenders', 'Legendaries (1 each)'],
+    transfer: ['Duplicate with worse IVs', 'Under IV floor, not shiny/lucky', 'Common spawns you catch daily', '3+ copies of same species', 'Old gym fillers you never use'],
+    maybe:    ['Shiny 3rd+ duplicate', 'High IV but weak species', 'Sentimental mon', 'Almost-good (70–82%)'],
+    checklist: [
+      { t: '⭐ Star everything you want to keep', s: 'Favorites cannot be mass-transferred accidentally.' },
+      { t: '🗑️ Run the Low IV filter', s: 'Bulk-transfer non-shiny, non-lucky mons under your IV floor.' },
+      { t: '🐀 Nuke common spawns', s: 'Pidgey, Rattata, Bidoof, etc. Keep ~5 for candy.' },
+      { t: '✨ Audit your shinies', s: 'Keep 1 of each species. Trade or transfer the rest.' },
+      { t: '👻 Clear shadow dupes', s: 'Keep best-IV shadow per species. Transfer or purify the rest.' },
+      { t: '📦 Trim your evo lines', s: 'Have a Charizard? You don\'t need 15 Charmander. Keep ~5 for candy.' },
+      { t: '🔁 Final CP-100 sweep', s: 'Anything under 100 CP without a star — gone.' },
+    ],
+    tips: [
+      { icon: '⚡', title: 'Mass Transfer Trick', body: 'Long-press one Pokémon, then tap others to multi-select. Transfer all at once — don\'t do one at a time.' },
+      { icon: '🔒', title: 'Favorite = Lock', body: 'Star everything worth keeping before you start. Favorited Pokémon can\'t be mass-transferred.' },
+      { icon: '🍬', title: 'Check Candy First', body: 'Before mass-transferring rares, confirm you have enough candy to evolve if needed.' },
+      { icon: '🎯', title: 'One Species at a Time', body: 'Search species name, sort by IV, keep your best 1–2, transfer the rest.' },
+    ],
+  },
+
+  pvp: {
+    icon: '⚔️', name: 'PvP Battler', defaultIV: 0,
+    filterDesc: 'PvP IVs are counterintuitive — low Attack / high Def+Sta often wins in Great League. These filters surface safe transfers. Never bulk-transfer anything in a CP league range without checking rank on PvPoke first.',
+    filters: [
+      { group: 'Safe to Transfer', items: [
+        { label: 'Common junk',   fn: _ => `rattata,pidgey,weedle,caterpie,sentret,hoothoot,wurmple,zigzagoon,bidoof,patrat&!shiny&!lucky&!favorite` },
+        { label: 'Over UL cap',   fn: _ => `cp2501-&!favorite&!shiny&!lucky&!legendary` },
+        { label: 'Under 100 CP', fn: _ => `cp-100&!shiny&!lucky&!baby&!favorite` },
+      ]},
+      { group: 'Manual Review Required', items: [
+        { label: 'GL range (audit)', fn: _ => `cp-1500&!favorite` },
+        { label: 'UL range (audit)', fn: _ => `cp1501-2500&!favorite` },
+        { label: 'Shadow review',    fn: _ => `shadow&!favorite` },
+      ]},
+    ],
+    decDesc: 'A 0/15/15 spread often outranks a 100% hundo in Great League. IV % means nothing here — rank everything on pvpoke.com before deciding.',
+    keep:     ['Rank 1–10 GL or UL IV spread', 'Low ATK IV (0–1) for Great League', 'Shadow with good PvP IV rank', 'Lucky with usable spread', 'CD mon with legacy move'],
+    transfer: ['High ATK IV — hurts GL bulk', 'Duplicate at same league level', 'Over CP cap with no XL potential', 'Common meta pick, poor rank', 'Non-meta species regardless of IV'],
+    maybe:    ['Low-rank but rare species', 'Shadow close to good PvP IVs', 'Hundo (keep 1, transfer dupes)', 'Legacy move mon near end of meta'],
+    checklist: [
+      { t: '⭐ Star your full active PvP roster', s: 'Don\'t risk transferring anything already in rotation.' },
+      { t: '⚔️ Audit Great League box (CP 1–1500)', s: 'Check rank on PvPoke. Keep rank 1–50. Transfer high-ATK-IV duplicates.' },
+      { t: '🛡️ Audit Ultra League box (1501–2500)', s: 'Low ATK + high bulk wins. Transfer high-ATK dupes with worse rank.' },
+      { t: '🏔️ Review Masters candidates', s: 'Hundos or near-hundos only. Keep 1 best per species.' },
+      { t: '💎 Shadow PvP audit', s: 'Shadows with low ATK IV can be excellent in GL — check before transferring any.' },
+      { t: '✨ Trim shiny dupes', s: 'Keep 1 PvP-viable shiny per species. Trade or transfer the rest.' },
+      { t: '🗑️ Nuke non-meta common spawns', s: 'Anything not PvP-relevant and not shiny/lucky — transfer.' },
+      { t: '🔁 Final CP-100 sweep', s: 'Under 100 CP without a star — gone.' },
+    ],
+    tips: [
+      { icon: '📊', title: 'Use PvPoke', body: 'pvpoke.com ranks every IV spread per league. Always check rank before deciding on anything near a CP cap.' },
+      { icon: '⚡', title: 'Low ATK = GL Value', body: 'A 0/15/15 IV spread often outranks a 100% hundo in Great League. Don\'t auto-transfer low IVs.' },
+      { icon: '🔒', title: 'Star Your Roster First', body: 'One accidental mass transfer can cost weeks of grinding. Star everything before you touch a search filter.' },
+      { icon: '💾', title: 'Keep 1 Hundo Anyway', body: 'Even if a hundo isn\'t GL-viable, it\'s Masters-eligible. Keep 1 per species as a baseline.' },
+    ],
+  },
+
+  raiding: {
+    icon: '🏆', name: 'Raider / PvE', defaultIV: 82,
+    filterDesc: 'For raiding, high IV % and the right moveset are what matter. These filters surface low-IV non-attackers for transfer, keeping your raid box lean and powerful.',
+    filters: [
+      { group: 'Transfer Candidates', items: [
+        { label: 'Low IV non-meta', fn: iv => `!favorite&0-${iv-1}&!shiny&!lucky` },
+        { label: 'Common spawns',   fn: _  => `rattata,pidgey,weedle,caterpie,sentret,hoothoot,wurmple,zigzagoon,bidoof,patrat&!shiny&!lucky&!favorite` },
+        { label: 'Under 100 CP',   fn: _  => `cp-100&!shiny&!lucky&!baby&!favorite` },
+      ]},
+      { group: 'Raid Box Audit', items: [
+        { label: 'Shadow attackers', fn: _ => `shadow&!favorite` },
+        { label: 'Legendaries',      fn: _ => `legendary&!favorite` },
+        { label: 'Species review',   fn: _ => `[attacker species]&!favorite` },
+      ]},
+    ],
+    decDesc: 'Keep your top 2–3 of each type\'s best attacker, fully powered. Everything else is clutter. Use GO DB or Gamepress to verify meta relevance.',
+    keep:     ['90%+ IV raid attacker', 'Shadow attacker with good IVs', 'Hundo of any meta attacker', 'Legendary with correct moveset', 'XL-worthy species (1–2 best)'],
+    transfer: ['Duplicate attacker with worse IVs', 'Wrong moveset + low IV', 'Non-meta species under IV floor', 'Common spawn duplicates', '4th+ copy of same raid mon'],
+    maybe:    ['Good IV, wrong moveset — TM first?', '82–89% of top-tier raid mon', 'Legacy move attacker (check value)', 'Shadow with mediocre IVs'],
+    checklist: [
+      { t: '⭐ Star your active raid team', s: 'All powered-up attackers get starred before any cleanup.' },
+      { t: '🔥 Audit each type\'s top attacker', s: 'Keep best 2–3 per type (Fire, Water, Electric, etc.). Transfer lower-IV dupes.' },
+      { t: '⚡ Review shadow attackers', s: 'Shadows hit ~20% harder. Keep high-IV ones, transfer weak-IV shadow dupes.' },
+      { t: '🏅 Trim your legendary box', s: 'Keep 1–2 best IV legendaries per species. You don\'t need 8 Mewtwo.' },
+      { t: '🎯 Check movesets', s: 'High IV + wrong moves → consider a TM. Low IV + wrong moves → transfer.' },
+      { t: '🐀 Purge common spawns', s: 'Rattata, Pidgey, Bidoof — keep ~5 per for candy, transfer the rest.' },
+      { t: '🗑️ Run the low IV filter', s: 'Transfer non-shiny, non-lucky mons under your IV floor.' },
+      { t: '🔁 Final CP-100 sweep', s: 'Anything under 100 CP without a star — gone.' },
+    ],
+    tips: [
+      { icon: '📋', title: 'Use a Tier List', body: 'Pokémon GO DB and Gamepress both maintain up-to-date raid attacker rankings per type. Check before investing.' },
+      { icon: '⚡', title: 'Shadow = +20% DPS', body: 'Shadow Pokémon deal roughly 20% more damage. Prioritize keeping high-IV shadows of meta attackers.' },
+      { icon: '🔒', title: 'Star Your Raid Team', body: 'Star your active raid squad before any cleanup so nothing gets accidentally mass-transferred.' },
+      { icon: '🎯', title: 'TM Before Transfer', body: 'Got a high-IV attacker with the wrong moves? Try a TM first — you may save a great raider.' },
+    ],
+  },
+
+  all: {
+    icon: '🎯', name: 'All-Around', defaultIV: 82,
+    filterDesc: 'You play everything — raids, PvP, community days. These filters cover all angles with conservative rules to avoid losing anything relevant. Don\'t bulk-transfer the review categories.',
+    filters: [
+      { group: 'Safe to Transfer', items: [
+        { label: 'Obvious junk',    fn: iv => `!favorite&0-${iv-1}&!shiny&!lucky&!shadow` },
+        { label: 'Common spawns',   fn: _  => `rattata,pidgey,weedle,caterpie,sentret,hoothoot,wurmple,zigzagoon,bidoof,patrat&!shiny&!lucky&!favorite` },
+        { label: 'Under 100 CP',   fn: _  => `cp-100&!shiny&!lucky&!baby&!favorite` },
+      ]},
+      { group: 'Manual Review (do not bulk transfer)', items: [
+        { label: 'GL range',    fn: _ => `cp-1500&!favorite` },
+        { label: 'Shadow audit', fn: _ => `shadow&!favorite` },
+        { label: 'Legendaries', fn: _ => `legendary&!favorite` },
+      ]},
+    ],
+    decDesc: 'Playing everything means you can\'t auto-transfer on IV % alone — a low-IV mon may be excellent in GL. Use PvPoke for PvP mons, GO DB for raiders. When unsure, star it and revisit.',
+    keep:     ['Rank 1–25 PvP IV spread', 'Hundo or near-hundo attacker', 'Shadow with PvP or raid value', 'Lucky Pokémon (any)', 'Shiny (1 per species)', 'CD mon with legacy move'],
+    transfer: ['Duplicate worse across all metrics', 'Non-meta, under IV floor, not shiny/lucky', 'Common spawn excess (keep ~5 per)', '4th+ copy of any species', 'Purified duplicates of same species'],
+    maybe:    ['High IV but no PvP or raid use', 'Good PvP spread on weak species', 'Shadow with borderline IVs', 'Legacy move on fringe meta pick'],
+    checklist: [
+      { t: '⭐ Star your full active roster', s: 'PvP teams, raid squads, best buddies — all get starred first.' },
+      { t: '⚔️ PvP audit: GL box (CP 1–1500)', s: 'Check rank on PvPoke. Low ATK IV is often correct for GL. Don\'t bulk-transfer this.' },
+      { t: '🛡️ PvP audit: UL box (1501–2500)', s: 'Transfer high-ATK-IV duplicates, keep better-ranked spreads.' },
+      { t: '🔥 Raid attacker audit', s: 'Keep top 2–3 per type. Transfer lower-IV dupes of the same species.' },
+      { t: '👻 Shadow review', s: 'Shadows have both PvP and raid value — check each one before any transfer.' },
+      { t: '🏅 Legendary trim', s: 'Keep 1–2 best per species. Transfer lower-ranked duplicates.' },
+      { t: '✨ Shiny audit', s: 'Keep 1 per species. Trade or transfer true extras.' },
+      { t: '🐀 Common spawns', s: 'Keep ~5–10 per common species for candy. Transfer the rest.' },
+      { t: '🔁 Final low IV + CP-100 sweep', s: 'Non-starred, non-shiny, under floor or under 100 CP — transfer.' },
+    ],
+    tips: [
+      { icon: '📊', title: 'PvPoke First', body: 'Before transferring anything in CP 1–1500, check its GL rank on pvpoke.com. It takes 10 seconds.' },
+      { icon: '📋', title: 'Raid Tier Lists', body: 'GO DB and Gamepress both maintain current raid attacker rankings by type. Verify before powering up or transferring.' },
+      { icon: '🔒', title: 'Star Everything First', body: 'The single most important step. One accidental mass transfer can cost weeks of work.' },
+      { icon: '⚡', title: 'Batch by Species', body: 'Search species name, sort by IV or CP, compare, then decide. Much faster than reviewing the full box.' },
+    ],
+  },
+};
+
+let currentStyle = null;
+
+function selectStyle(card) {
+  document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+  currentStyle = card.dataset.style;
+  document.getElementById('startBtn').classList.add('ready');
+}
+
+function launchTool() {
+  if (!currentStyle) return;
+  const d = DATA[currentStyle];
+  document.getElementById('pillIcon').textContent = d.icon;
+  document.getElementById('pillName').textContent = d.name;
+  const slider = document.getElementById('ivSlider');
+  slider.value = d.defaultIV;
+  document.getElementById('ivVal').textContent = d.defaultIV + '%';
+  document.getElementById('ivRow').style.display = currentStyle === 'pvp' ? 'none' : 'flex';
+  renderAll(d, d.defaultIV);
+  document.getElementById('screen-onboard').classList.remove('active');
+  document.getElementById('screen-tool').classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function goBack() {
+  document.getElementById('screen-tool').classList.remove('active');
+  document.getElementById('screen-onboard').classList.add('active');
+  document.getElementById('checklist').innerHTML = '';
+  window.scrollTo(0, 0);
+}
+
+function updateFilters() {
+  const iv = parseInt(document.getElementById('ivSlider').value);
+  document.getElementById('ivVal').textContent = iv + '%';
+  renderFilters(DATA[currentStyle], iv);
+}
+
+function resetIV() {
+  const d = DATA[currentStyle];
+  document.getElementById('ivSlider').value = d.defaultIV;
+  document.getElementById('ivVal').textContent = d.defaultIV + '%';
+  renderFilters(d, d.defaultIV);
+}
+
+function renderAll(d, iv) {
+  document.getElementById('filterDesc').textContent = d.filterDesc;
+  renderFilters(d, iv);
+  document.getElementById('decDesc').textContent = d.decDesc;
+  renderDecisions(d);
+  renderChecklist(d);
+  renderTips(d);
+}
+
+function renderFilters(d, iv) {
+  const el = document.getElementById('filterList');
+  el.innerHTML = '';
+  d.filters.forEach(g => {
+    const grp = document.createElement('div');
+    grp.className = 'fgroup';
+    grp.innerHTML = `<div class="fgroup-label">${g.group}</div>`;
+    g.items.forEach(f => {
+      const str = f.fn(iv);
+      const row = document.createElement('div');
+      row.className = 'frow';
+      row.innerHTML = `
+        <span class="flabel">${f.label}</span>
+        <span class="fstring">${str}</span>
+        <button class="cbtn" data-str="${encodeURIComponent(str)}" onclick="copyF(this)">copy</button>`;
+      grp.appendChild(row);
+    });
+    el.appendChild(grp);
+  });
+}
+
+function copyF(btn) {
+  const str = decodeURIComponent(btn.dataset.str);
+  navigator.clipboard.writeText(str).then(() => {
+    btn.textContent = '✓ copied';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+
+function renderDecisions(d) {
+  const grid = document.getElementById('decGrid');
+  grid.innerHTML = '';
+  [
+    { cls: 'keep',     label: '✓ Keep',     rules: d.keep },
+    { cls: 'transfer', label: '✗ Transfer', rules: d.transfer },
+    { cls: 'maybe',    label: '? Maybe',    rules: d.maybe },
+  ].forEach(c => {
+    const card = document.createElement('div');
+    card.className = `dcard ${c.cls}`;
+    card.innerHTML = `<div class="dlabel">${c.label}</div><ul class="drules">${c.rules.map(r => `<li>${r}</li>`).join('')}</ul>`;
+    grid.appendChild(card);
+  });
+}
+
+function renderChecklist(d) {
+  const el = document.getElementById('checklist');
+  el.innerHTML = '';
+  document.getElementById('progCt').textContent = `0 / ${d.checklist.length} complete`;
+  document.getElementById('progFill').style.width = '0%';
+  d.checklist.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'citem';
+    row.innerHTML = `<div class="cbox"><span class="cmark">✓</span></div><div class="ctxt"><div class="ctitle">${item.t}</div><div class="csub">${item.s}</div></div>`;
+    row.onclick = () => { row.classList.toggle('checked'); updateProg(d.checklist.length); };
+    el.appendChild(row);
+  });
+}
+
+function updateProg(total) {
+  const done = document.querySelectorAll('.citem.checked').length;
+  document.getElementById('progCt').textContent = `${done} / ${total} complete`;
+  document.getElementById('progFill').style.width = `${(done / total) * 100}%`;
+}
+
+function renderTips(d) {
+  const grid = document.getElementById('tipGrid');
+  grid.innerHTML = '';
+  d.tips.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'tcard';
+    card.innerHTML = `<div class="ticon">${t.icon}</div><div class="ttitle">${t.title}</div><div class="tbody">${t.body}</div>`;
+    grid.appendChild(card);
+  });
+}
+</script>
+</body>
+</html>
